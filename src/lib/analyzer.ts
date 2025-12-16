@@ -7,26 +7,23 @@ export interface NightAnalysis {
   moonPhase: number;
   moonRise: Date | null;
   moonSet: Date | null;
+  sunset: Date | null;
   weather: string;
   isGoodNight: boolean;
-  reasons: string[];
+  goodNightType: 'stargazing' | 'hiking' | null;
+  reason: string | null;
 }
 
 /**
  * Analyzes a night for hiking/stargazing conditions.
  * 
- * @param date - A Date object representing the LOCAL calendar date to analyze.
- *               This should be midnight in the local timezone (from getNextTwoWeeks).
- * @param lat - Latitude of the location
- * @param lon - Longitude of the location  
- * @param timezone - IANA timezone string (e.g., 'America/Los_Angeles')
- * @returns NightAnalysis with moon data and recommendations
+ * Good Night Criteria:
+ * 1. Full Moon (>90% illumination) - Great for night hiking with natural light
+ * 2. New Moon (<10% illumination) - Dark skies for stargazing
+ * 3. Moon sets near sunset - No moon during the night = dark skies
  * 
- * Timezone Safety:
- * - The `date` parameter represents a local calendar date
- * - SunCalc.getMoonIllumination uses UTC internally but we pass the local midnight
- * - MoonRise/MoonSet times are returned as UTC Date objects
- * - The caller is responsible for formatting these times in the target timezone
+ * The moonset-near-sunset check catches nights where the moon won't be
+ * visible during typical evening hours, even if illumination is moderate.
  */
 export function analyzeNight(
   date: Date,
@@ -35,42 +32,45 @@ export function analyzeNight(
   timezone: string
 ): NightAnalysis {
   // Get moon illumination for this date
-  // SunCalc works with the Date's UTC value, so we pass our local-midnight date
   const moonIllum = SunCalc.getMoonIllumination(date);
   const illuminationPercent = moonIllum.fraction * 100;
   
   // Get moon times for this location and date
-  // Returns times in UTC as Date objects
   const moonTimes = SunCalc.getMoonTimes(date, lat, lon);
   
-  // Determine if it's a "good night"
-  // Good = New Moon (<10% illumination) OR Full Moon (>90% illumination)
-  // New Moon = dark skies for stargazing
-  // Full Moon = bright enough for night hiking without flashlights
+  // Get sun times for sunset
+  const sunTimes = SunCalc.getTimes(date, lat, lon);
+  const sunset = sunTimes.sunset;
+  
+  // Check conditions
   const isNewMoon = illuminationPercent < 10;
   const isFullMoon = illuminationPercent > 90;
   
-  // Mock weather for now (always clear)
+  // Check if moon sets within 2 hours of sunset (moon won't be up during the night)
+  const moonSetsNearSunset = checkMoonSetsNearSunset(moonTimes.set, sunset);
+  
+  // Mock weather for now
   const weather = 'Clear';
   const isClearWeather = weather === 'Clear';
   
-  // Build reasons array
-  const reasons: string[] = [];
-  
-  if (isNewMoon) {
-    reasons.push('🌑 New Moon - Excellent for stargazing');
-  } else if (isFullMoon) {
-    reasons.push('🌕 Full Moon - Great for night hiking');
-  }
+  // Determine good night type and reason
+  let goodNightType: 'stargazing' | 'hiking' | null = null;
+  let reason: string | null = null;
   
   if (isClearWeather) {
-    reasons.push('☀️ Clear skies expected');
+    if (isFullMoon) {
+      goodNightType = 'hiking';
+      reason = 'Full moon for night hiking';
+    } else if (isNewMoon) {
+      goodNightType = 'stargazing';
+      reason = 'New moon for stargazing';
+    } else if (moonSetsNearSunset) {
+      goodNightType = 'stargazing';
+      reason = 'Moon sets early — dark skies';
+    }
   }
   
-  // A night is "good" if we have favorable moon AND clear weather
-  const isGoodNight = (isNewMoon || isFullMoon) && isClearWeather;
-  
-  // Format the date string for display (local timezone)
+  const isGoodNight = goodNightType !== null;
   const dateString = format(date, 'yyyy-MM-dd', { timeZone: timezone });
   
   return {
@@ -79,10 +79,26 @@ export function analyzeNight(
     moonPhase: moonIllum.phase,
     moonRise: moonTimes.rise || null,
     moonSet: moonTimes.set || null,
+    sunset,
     weather,
     isGoodNight,
-    reasons,
+    goodNightType,
+    reason,
   };
+}
+
+/**
+ * Check if moon sets within ~2 hours of sunset.
+ * This means the moon won't be visible during the night.
+ */
+function checkMoonSetsNearSunset(moonSet: Date | undefined, sunset: Date): boolean {
+  if (!moonSet || !sunset) return false;
+  
+  const diffMs = moonSet.getTime() - sunset.getTime();
+  const diffHours = diffMs / (1000 * 60 * 60);
+  
+  // Moon sets between 2 hours before and 2 hours after sunset
+  return diffHours >= -2 && diffHours <= 2;
 }
 
 /**

@@ -35,10 +35,7 @@ export const GET: APIRoute = async () => {
     goodNights.forEach(night => {
       const dateIdx = analyses.indexOf(night);
       const formattedDate = formatDateInTimezone(dates[dateIdx], LOCATION.timezone);
-      console.log(`  - ${formattedDate}: ${getMoonPhaseName(night.moonPhase)} (${night.illumination}% illumination)`);
-      night.reasons.forEach(reason => {
-        console.log(`      ${reason}`);
-      });
+      console.log(`  - ${formattedDate}: ${night.reason} (${night.goodNightType})`);
     });
   } else {
     console.log('No ideal nights in the next 14 days.');
@@ -63,7 +60,8 @@ export const GET: APIRoute = async () => {
           moonPhase: getMoonPhaseName(night.moonPhase),
           illumination: night.illumination,
           weather: night.weather,
-          reasons: night.reasons
+          reason: night.reason,
+          type: night.goodNightType
         };
       }),
       allNights: analyses.map((night, idx) => ({

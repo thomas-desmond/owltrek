@@ -18,122 +18,131 @@ const analyses: NightAnalysis[] = dates.map(date =>
   analyzeNight(date, LOCATION.lat, LOCATION.lon, LOCATION.timezone)
 );
 
-// Count good nights
-const goodNights = analyses.filter(a => a.isGoodNight).length;
+// Separate good nights from regular nights
+const goodNightsList = analyses.map((a, i) => ({ analysis: a, index: i })).filter(x => x.analysis.isGoodNight);
 ---
 
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="Find the best nights for hiking and stargazing based on moon phases and weather" />
+  <meta name="description" content="Find the best nights for hiking and stargazing" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-  <title>OwlTrek - Night Hike Notifier</title>
+  <title>OwlTrek</title>
 </head>
-<body class="min-h-screen bg-gradient-to-b from-night-950 via-night-900 to-night-950 text-white">
-  <div class="container mx-auto px-4 py-8 max-w-6xl">
+<body class="min-h-screen bg-night-950 text-white">
+  <div class="container mx-auto px-4 py-8 max-w-4xl">
+    
     <!-- Header -->
-    <header class="text-center mb-12">
-      <h1 class="text-4xl md:text-5xl font-bold mb-2 bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
-        🦉 OwlTrek
-      </h1>
-      <p class="text-night-300 text-lg">Night Hike Notifier</p>
-      <p class="text-night-400 text-sm mt-2">
-        📍 {LOCATION.name} • Next 14 Days • {goodNights} Good Night{goodNights !== 1 ? 's' : ''}
-      </p>
+    <header class="text-center mb-10">
+      <h1 class="text-3xl font-bold mb-1">🦉 OwlTrek</h1>
+      <p class="text-night-400 text-sm">📍 {LOCATION.name}</p>
     </header>
 
-    <!-- Legend -->
-    <div class="flex flex-wrap justify-center gap-4 mb-8 text-sm">
-      <div class="flex items-center gap-2">
-        <span class="w-3 h-3 rounded-full bg-emerald-500"></span>
-        <span class="text-night-300">Good Night</span>
-      </div>
-      <div class="flex items-center gap-2">
-        <span class="w-3 h-3 rounded-full bg-night-700"></span>
-        <span class="text-night-300">Regular Night</span>
-      </div>
-    </div>
-
-    <!-- 14-Day Grid -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-      {analyses.map((analysis, index) => (
-        <div 
-          class={`rounded-xl p-4 border transition-all hover:scale-[1.02] ${
-            analysis.isGoodNight 
-              ? 'bg-emerald-900/30 border-emerald-500/50 shadow-lg shadow-emerald-500/10' 
-              : 'bg-night-900/50 border-night-700/50'
-          }`}
-        >
-          <!-- Date Header -->
-          <div class="flex justify-between items-start mb-3">
-            <div>
-              <p class={`font-semibold ${index === 0 ? 'text-yellow-400' : 'text-white'}`}>
-                {index === 0 ? 'Tonight' : formatDateInTimezone(dates[index], LOCATION.timezone)}
-              </p>
-              <p class="text-xs text-night-400">{analysis.dateString}</p>
-            </div>
-            {analysis.isGoodNight && (
-              <span class="px-2 py-0.5 bg-emerald-500/20 text-emerald-400 text-xs rounded-full font-medium">
-                Good Night
-              </span>
-            )}
-          </div>
-
-          <!-- Moon Info -->
-          <div class="space-y-2">
-            <div class="flex items-center justify-between">
-              <span class="text-night-400 text-sm">Moon</span>
-              <span class="text-white font-medium">
-                {getMoonPhaseName(analysis.moonPhase)}
-              </span>
-            </div>
-            
-            <div class="flex items-center justify-between">
-              <span class="text-night-400 text-sm">Illumination</span>
-              <div class="flex items-center gap-2">
-                <div class="w-16 h-1.5 bg-night-700 rounded-full overflow-hidden">
-                  <div 
-                    class="h-full bg-yellow-400 rounded-full"
-                    style={`width: ${analysis.illumination}%`}
-                  ></div>
+    <!-- Good Nights Section -->
+    {goodNightsList.length > 0 ? (
+      <section class="mb-12">
+        <h2 class="text-lg font-medium text-night-300 mb-4">Go outside on these nights</h2>
+        <div class="space-y-3">
+          {goodNightsList.map(({ analysis, index }) => (
+            <details class={`group rounded-lg border overflow-hidden ${
+              analysis.goodNightType === 'hiking' 
+                ? 'bg-amber-900/20 border-amber-500/40' 
+                : 'bg-indigo-900/20 border-indigo-500/40'
+            }`}>
+              <summary class="p-4 cursor-pointer list-none flex items-center justify-between hover:bg-white/5 transition-colors">
+                <div>
+                  <p class="font-semibold text-lg">
+                    {index === 0 ? 'Tonight' : formatDateInTimezone(dates[index], LOCATION.timezone)}
+                  </p>
+                  <p class={`text-sm mt-0.5 ${
+                    analysis.goodNightType === 'hiking' ? 'text-amber-400' : 'text-indigo-400'
+                  }`}>
+                    {analysis.goodNightType === 'hiking' ? '🌕' : '✨'} {analysis.reason}
+                  </p>
                 </div>
-                <span class="text-white text-sm w-10 text-right">{analysis.illumination}%</span>
+                <div class="flex items-center gap-3">
+                  <div class="text-right text-sm text-night-400">
+                    <p>{getMoonPhaseName(analysis.moonPhase)}</p>
+                    <p>{analysis.illumination}% lit</p>
+                  </div>
+                  <span class="text-night-500 group-open:rotate-180 transition-transform">▼</span>
+                </div>
+              </summary>
+              <div class="px-4 pb-4 pt-2 border-t border-white/10">
+                <div class="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                  <div class="flex justify-between">
+                    <span class="text-night-400">Sunset</span>
+                    <span class="text-white">{formatTimeInTimezone(analysis.sunset, LOCATION.timezone)}</span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span class="text-night-400">Moon Phase</span>
+                    <span class="text-white">{getMoonPhaseName(analysis.moonPhase)}</span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span class="text-night-400">Moon Rise</span>
+                    <span class="text-white">{formatTimeInTimezone(analysis.moonRise, LOCATION.timezone)}</span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span class="text-night-400">Illumination</span>
+                    <span class="text-white">{analysis.illumination}%</span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span class="text-night-400">Moon Set</span>
+                    <span class="text-white">{formatTimeInTimezone(analysis.moonSet, LOCATION.timezone)}</span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span class="text-night-400">Weather</span>
+                    <span class="text-white">{analysis.weather}</span>
+                  </div>
+                </div>
               </div>
-            </div>
-
-            <div class="flex items-center justify-between">
-              <span class="text-night-400 text-sm">Moon Rise</span>
-              <span class="text-white text-sm">
-                {formatTimeInTimezone(analysis.moonRise, LOCATION.timezone)}
-              </span>
-            </div>
-
-            <div class="flex items-center justify-between">
-              <span class="text-night-400 text-sm">Weather</span>
-              <span class="text-white text-sm">{analysis.weather}</span>
-            </div>
-          </div>
-
-          <!-- Reasons -->
-          {analysis.reasons.length > 0 && (
-            <div class="mt-3 pt-3 border-t border-night-700/50">
-              <ul class="space-y-1">
-                {analysis.reasons.map(reason => (
-                  <li class="text-xs text-night-300">{reason}</li>
-                ))}
-              </ul>
-            </div>
-          )}
+            </details>
+          ))}
         </div>
-      ))}
-    </div>
+      </section>
+    ) : (
+      <section class="mb-12 text-center py-8">
+        <p class="text-night-400">No ideal nights in the next two weeks.</p>
+        <p class="text-night-500 text-sm mt-1">Check back later for updates.</p>
+      </section>
+    )}
+
+    <!-- All Nights Calendar -->
+    <section>
+      <h2 class="text-lg font-medium text-night-300 mb-4">Full forecast</h2>
+      <div class="grid grid-cols-7 gap-1 text-center text-xs">
+        {analyses.map((analysis, index) => {
+          const isGood = analysis.isGoodNight;
+          const isHiking = analysis.goodNightType === 'hiking';
+          return (
+            <div 
+              class={`rounded p-2 ${
+                isGood 
+                  ? isHiking 
+                    ? 'bg-amber-900/30 border border-amber-500/30' 
+                    : 'bg-indigo-900/30 border border-indigo-500/30'
+                  : 'bg-night-900/50'
+              }`}
+              title={`${analysis.dateString} - ${getMoonPhaseName(analysis.moonPhase)} (${analysis.illumination}%)`}
+            >
+              <p class={`font-medium ${index === 0 ? 'text-yellow-400' : isGood ? 'text-white' : 'text-night-400'}`}>
+                {new Date(analysis.dateString).getDate()}
+              </p>
+              <p class="text-night-500 mt-0.5">{analysis.illumination}%</p>
+              {isGood && (
+                <p class="mt-0.5">{isHiking ? '🌕' : '✨'}</p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </section>
 
     <!-- Footer -->
-    <footer class="mt-12 text-center text-night-500 text-sm">
-      <p>Moon data powered by SunCalc • Weather coming soon</p>
-      <p class="mt-1">Times displayed in {LOCATION.timezone}</p>
+    <footer class="mt-10 text-center text-night-600 text-xs">
+      <p>Times in {LOCATION.timezone} • Moon data via SunCalc</p>
     </footer>
   </div>
 </body>

@@ -22,7 +22,7 @@ export function getNextTwoWeeks(timezone: string): Date[] {
   
   // Generate 14 days starting from local "today"
   const dates: Date[] = [];
-  for (let i = 0; i < 14; i++) {
+  for (let i = 0; i < 60; i++) {
     // addDays on the local date, then we have a Date object
     // representing that local calendar date
     dates.push(addDays(localStartOfDay, i));
