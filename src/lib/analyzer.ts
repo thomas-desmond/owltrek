@@ -49,9 +49,9 @@ export function analyzeNight(
   // Check if moon sets within 2 hours of sunset (moon won't be up during the night)
   const moonSetsNearSunset = checkMoonSetsNearSunset(moonTimes.set, sunset);
   
-  // Mock weather for now
+  // Mock weather for now - will integrate real weather API later
   const weather = 'Clear';
-  const isClearWeather = weather === 'Clear';
+  const isClearWeather = true;
   
   // Determine good night type and reason
   let goodNightType: 'stargazing' | 'hiking' | null = null;

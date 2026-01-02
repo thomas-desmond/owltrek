@@ -43,7 +43,7 @@ const goodNightsList = analyses.map((a, i) => ({ analysis: a, index: i })).filte
     <!-- Good Nights Section -->
     {goodNightsList.length > 0 ? (
       <section class="mb-12">
-        <h2 class="text-lg font-medium text-night-300 mb-4">Go outside on these nights</h2>
+        <h2 class="text-lg font-medium text-night-300 mb-4">Go outside on these nights over the next 14 days</h2>
         <div class="space-y-3">
           {goodNightsList.map(({ analysis, index }) => (
             <details class={`group rounded-lg border overflow-hidden ${
@@ -111,7 +111,7 @@ const goodNightsList = analyses.map((a, i) => ({ analysis: a, index: i })).filte
 
     <!-- All Nights Calendar -->
     <section>
-      <h2 class="text-lg font-medium text-night-300 mb-4">Full forecast</h2>
+      <h2 class="text-lg font-medium text-night-300 mb-4">Full 14 day forecast</h2>
       <div class="grid grid-cols-7 gap-1 text-center text-xs">
         {analyses.map((analysis, index) => {
           const isGood = analysis.isGoodNight;
@@ -139,6 +139,47 @@ const goodNightsList = analyses.map((a, i) => ({ analysis: a, index: i })).filte
         })}
       </div>
     </section>
+<!-- 
+    <section class="mt-10 p-4 bg-night-900/50 rounded-lg border border-night-700">
+      <h3 class="text-sm font-medium text-night-300 mb-2">🧪 Developer Test</h3>
+      <button 
+        id="test-email-btn"
+        class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm rounded transition-colors"
+      >
+        Send Test Email
+      </button>
+      <span id="email-status" class="ml-3 text-sm text-night-400"></span>
+    </section>
+
+    <script>
+      const btn = document.getElementById('test-email-btn');
+      const status = document.getElementById('email-status');
+      
+      btn?.addEventListener('click', async () => {
+        btn.disabled = true;
+        btn.textContent = 'Sending...';
+        status!.textContent = '';
+        
+        try {
+          const res = await fetch('/api/send-digest', { method: 'POST' });
+          const data = await res.json();
+          
+          if (data.success) {
+            status!.textContent = `✅ Email sent! (${data.goodNightsCount} good nights)`;
+            status!.className = 'ml-3 text-sm text-green-400';
+          } else {
+            status!.textContent = `❌ Failed: ${data.error?.message || 'Unknown error'}`;
+            status!.className = 'ml-3 text-sm text-red-400';
+          }
+        } catch (err) {
+          status!.textContent = `❌ Error: ${err}`;
+          status!.className = 'ml-3 text-sm text-red-400';
+        }
+        
+        btn.disabled = false;
+        btn.textContent = 'Send Test Email';
+      });
+    </script> -->
 
     <!-- Footer -->
     <footer class="mt-10 text-center text-night-600 text-xs">

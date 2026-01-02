@@ -17,7 +17,10 @@
 	},
 	"observability": {
 		"enabled": true
-	}
+	},
+	// Secrets are set via: wrangler secret put RESEND_API_KEY
+	// and: wrangler secret put CRON_SECRET
+	// For local dev, create a .dev.vars file with these values
 	/**
 	 * Smart Placement
 	 * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
