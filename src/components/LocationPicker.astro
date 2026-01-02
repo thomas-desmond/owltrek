@@ -198,11 +198,25 @@ const { currentName, currentLat, currentLon, currentTimezone } = Astro.props;
           
           // Add click handlers to results
           searchResults.querySelectorAll('button').forEach(btn => {
-            btn.addEventListener('click', () => {
+            btn.addEventListener('click', async () => {
               const lat = parseFloat(btn.dataset.lat);
               const lon = parseFloat(btn.dataset.lon);
               const name = btn.dataset.name;
-              const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+              
+              // Look up timezone for the location
+              let timezone = Intl.DateTimeFormat().resolvedOptions().timeZone; // fallback
+              try {
+                const tzResponse = await fetch(
+                  `https://timeapi.io/api/timezone/coordinate?latitude=${lat}&longitude=${lon}`
+                );
+                if (tzResponse.ok) {
+                  const tzData = await tzResponse.json();
+                  timezone = tzData.timeZone || timezone;
+                }
+              } catch {
+                // Use fallback timezone
+              }
+              
               setLocation(lat, lon, timezone, name);
             });
           });
