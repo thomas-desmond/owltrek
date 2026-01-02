@@ -2,12 +2,11 @@ import type { APIRoute } from 'astro';
 import { getNextTwoWeeks, formatDateInTimezone } from '../../lib/dates';
 import { analyzeNight, getMoonPhaseName } from '../../lib/analyzer';
 
-// Location Configuration - San Diego, CA
 const LOCATION = {
-  lat: 32.7157,
-  lon: -117.1611,
+  lat: 33.159586,
+  lon: -117.067950,
   timezone: 'America/Los_Angeles',
-  name: 'San Diego, CA'
+  name: 'Escondido, CA'
 };
 
 // Recipients for daily digest
@@ -58,6 +57,25 @@ function generateEmailHtml(goodNights: any[], location: typeof LOCATION): string
   `;
 }
 
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, X-Cron-Secret',
+};
+
+// OPTIONS handler for CORS preflight
+export const OPTIONS: APIRoute = async () => {
+  return new Response(null, { status: 204, headers: corsHeaders });
+};
+
+// GET handler for simple health check / debugging
+export const GET: APIRoute = async () => {
+  return new Response(
+    JSON.stringify({ status: 'ok', message: 'Use POST to send digest emails' }),
+    { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+  );
+};
+
 export const POST: APIRoute = async ({ request, locals }) => {
   // Get secrets from Cloudflare environment
   const env = locals.runtime.env;
@@ -72,7 +90,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
   if (!isLocalhost && cronSecret !== CRON_SECRET) {
     return new Response(
       JSON.stringify({ success: false, error: 'Unauthorized' }),
-      { status: 401, headers: { 'Content-Type': 'application/json' } }
+      { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
     );
   }
 
@@ -116,19 +134,19 @@ export const POST: APIRoute = async ({ request, locals }) => {
       console.error('Resend API error:', data);
       return new Response(
         JSON.stringify({ success: false, error: data }),
-        { status: 500, headers: { 'Content-Type': 'application/json' } }
+        { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
       );
     }
 
     return new Response(
       JSON.stringify({ success: true, emailId: data.id ?? null, goodNightsCount: goodNights.length }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } }
+      { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
     );
   } catch (error) {
     console.error('Email send error:', error);
     return new Response(
       JSON.stringify({ success: false, error: String(error) }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
+      { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
     );
   }
 };
