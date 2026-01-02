@@ -2,20 +2,24 @@ import type { APIRoute } from 'astro';
 import { getNextTwoWeeks, formatDateInTimezone } from '../../lib/dates';
 import { analyzeNight, getMoonPhaseName } from '../../lib/analyzer';
 
-const LOCATION = {
-  lat: 33.159586,
-  lon: -117.067950,
-  timezone: 'America/Los_Angeles',
-  name: 'Escondido, CA'
-};
+interface Subscriber {
+  email: string;
+  location_lat: number;
+  location_lon: number;
+  location_name: string;
+  timezone: string;
+  frequency: string;
+  last_email_sent: string | null;
+}
 
-// Recipients for daily digest
-const RECIPIENTS = [
-  'tdesmond@cloudflare.com',
-  'thomasdes533@gmail.com'
-];
+interface LocationConfig {
+  lat: number;
+  lon: number;
+  timezone: string;
+  name: string;
+}
 
-function generateEmailHtml(goodNights: any[], location: typeof LOCATION): string {
+function generateEmailHtml(goodNights: any[], location: LocationConfig, unsubscribeUrl: string): string {
   const nightsHtml = goodNights.length > 0
     ? goodNights.map(night => `
         <div style="margin-bottom: 16px; padding: 12px; background: #1e1b4b; border-radius: 8px; border-left: 4px solid ${night.type === 'hiking' ? '#f59e0b' : '#6366f1'};">
@@ -49,7 +53,8 @@ function generateEmailHtml(goodNights: any[], location: typeof LOCATION): string
         
         <hr style="border: none; border-top: 1px solid #374151; margin: 24px 0;">
         <p style="margin: 0; color: #6b7280; font-size: 12px;">
-          Sent by OwlTrek • Moon data via SunCalc
+          Sent by OwlTrek • Moon data via SunCalc<br>
+          <a href="${unsubscribeUrl}" style="color: #6b7280;">Unsubscribe</a>
         </p>
       </div>
     </body>
@@ -77,10 +82,11 @@ export const GET: APIRoute = async () => {
 };
 
 export const POST: APIRoute = async ({ request, locals }) => {
-  // Get secrets from Cloudflare environment
+  // Get secrets and DB from Cloudflare environment
   const env = locals.runtime.env;
   const RESEND_API_KEY = env.RESEND_API_KEY;
   const CRON_SECRET = env.CRON_SECRET;
+  const db = env.OWLTREK_DB;
 
   // Check for cron secret (skip check if from localhost for testing)
   const url = new URL(request.url);
@@ -94,56 +100,108 @@ export const POST: APIRoute = async ({ request, locals }) => {
     );
   }
 
-  // Generate the forecast data
-  const dates = getNextTwoWeeks(LOCATION.timezone);
-  const analyses = dates.map(date => 
-    analyzeNight(date, LOCATION.lat, LOCATION.lon, LOCATION.timezone)
-  );
-  
-  const goodNights = analyses
-    .map((night, idx) => ({ ...night, idx }))
-    .filter(n => n.isGoodNight)
-    .map(night => ({
-      date: night.dateString,
-      displayDate: formatDateInTimezone(dates[night.idx], LOCATION.timezone),
-      moonPhase: getMoonPhaseName(night.moonPhase),
-      illumination: night.illumination,
-      reason: night.reason,
-      type: night.goodNightType
-    }));
-
-  // Send email via Resend
   try {
-    const response = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${RESEND_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: 'OwlTrek <noreply@mail.owltrek.com>',
-        to: RECIPIENTS,
-        subject: `🦉 OwlTrek: ${goodNights.length} good night${goodNights.length !== 1 ? 's' : ''} this week`,
-        html: generateEmailHtml(goodNights, LOCATION),
-      }),
-    });
+    // Get all confirmed, subscribed users
+    const { results: subscribers } = await db.prepare(
+      'SELECT email, location_lat, location_lon, location_name, timezone, frequency, last_email_sent FROM subscribers WHERE confirmed = 1 AND subscribed = 1'
+    ).all<Subscriber>();
 
-    const data = await response.json() as { id?: string; message?: string };
-
-    if (!response.ok) {
-      console.error('Resend API error:', data);
+    if (!subscribers || subscribers.length === 0) {
       return new Response(
-        JSON.stringify({ success: false, error: data }),
-        { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+        JSON.stringify({ success: true, message: 'No subscribers to send to', emailsSent: 0 }),
+        { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
       );
     }
 
+    let emailsSent = 0;
+    const errors: string[] = [];
+
+    const now = new Date();
+    const nowISO = now.toISOString();
+
+    // Send personalized email to each subscriber (respecting frequency)
+    for (const subscriber of subscribers) {
+      // Check if we should skip based on frequency
+      if (subscriber.last_email_sent) {
+        const lastSent = new Date(subscriber.last_email_sent);
+        const hoursSinceLastEmail = (now.getTime() - lastSent.getTime()) / (1000 * 60 * 60);
+        
+        if (subscriber.frequency === 'daily' && hoursSinceLastEmail < 20) {
+          continue; // Skip if sent within last 20 hours
+        }
+        if (subscriber.frequency === 'weekly' && hoursSinceLastEmail < 144) {
+          continue; // Skip if sent within last 6 days (144 hours)
+        }
+      }
+      const location: LocationConfig = {
+        lat: subscriber.location_lat,
+        lon: subscriber.location_lon,
+        timezone: subscriber.timezone,
+        name: subscriber.location_name,
+      };
+
+      // Generate forecast for this subscriber's location
+      const dates = getNextTwoWeeks(location.timezone);
+      const analyses = dates.map(date => 
+        analyzeNight(date, location.lat, location.lon, location.timezone)
+      );
+      
+      const goodNights = analyses
+        .map((night, idx) => ({ ...night, idx }))
+        .filter(n => n.isGoodNight)
+        .map(night => ({
+          date: night.dateString,
+          displayDate: formatDateInTimezone(dates[night.idx], location.timezone),
+          moonPhase: getMoonPhaseName(night.moonPhase),
+          illumination: night.illumination,
+          reason: night.reason,
+          type: night.goodNightType
+        }));
+
+      const unsubscribeUrl = `https://owltrek.com/api/subscribers/unsubscribe?email=${encodeURIComponent(subscriber.email)}`;
+
+      try {
+        const response = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${RESEND_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            from: 'OwlTrek <noreply@mail.owltrek.com>',
+            to: [subscriber.email],
+            subject: `🦉 OwlTrek: ${goodNights.length} good night${goodNights.length !== 1 ? 's' : ''} coming up`,
+            html: generateEmailHtml(goodNights, location, unsubscribeUrl),
+          }),
+        });
+
+        if (response.ok) {
+          emailsSent++;
+          // Update last_email_sent timestamp
+          await db.prepare(
+            'UPDATE subscribers SET last_email_sent = ? WHERE email = ?'
+          ).bind(nowISO, subscriber.email).run();
+        } else {
+          const errorData = await response.json() as { message?: string };
+          errors.push(`${subscriber.email}: ${errorData.message || 'Unknown error'}`);
+        }
+      } catch (emailError) {
+        errors.push(`${subscriber.email}: ${String(emailError)}`);
+      }
+    }
+
     return new Response(
-      JSON.stringify({ success: true, emailId: data.id ?? null, goodNightsCount: goodNights.length }),
+      JSON.stringify({ 
+        success: true, 
+        emailsSent, 
+        totalSubscribers: subscribers.length,
+        errors: errors.length > 0 ? errors : undefined 
+      }),
       { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
     );
+
   } catch (error) {
-    console.error('Email send error:', error);
+    console.error('Send digest error:', error);
     return new Response(
       JSON.stringify({ success: false, error: String(error) }),
       { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
