@@ -1,6 +1,7 @@
 ---
 import { getNextTwoWeeks, formatTimeInTimezone, formatDateInTimezone } from '../lib/dates';
 import { analyzeNight, getMoonPhaseName, type NightAnalysis } from '../lib/analyzer';
+import SubscribeForm from '../components/SubscribeForm.astro';
 
 // Location Configuration - San Diego, CA
 const LOCATION = {
@@ -139,6 +140,9 @@ const goodNightsList = analyses.map((a, i) => ({ analysis: a, index: i })).filte
         })}
       </div>
     </section>
+
+    <!-- Subscribe Form -->
+    <SubscribeForm />
 <!-- 
     <section class="mt-10 p-4 bg-night-900/50 rounded-lg border border-night-700">
       <h3 class="text-sm font-medium text-night-300 mb-2">🧪 Developer Test</h3>

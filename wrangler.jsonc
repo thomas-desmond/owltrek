@@ -18,6 +18,13 @@
 	"observability": {
 		"enabled": true
 	},
+	"d1_databases": [
+		{
+			"binding": "OWLTREK_DB",
+			"database_name": "owltrek-db",
+			"database_id": "fc92005d-cf10-46ff-8078-cb0d39c178ea"
+		}
+	],
 	// Secrets are set via: wrangler secret put RESEND_API_KEY
 	// and: wrangler secret put CRON_SECRET
 	// For local dev, create a .dev.vars file with these values

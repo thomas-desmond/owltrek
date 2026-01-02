@@ -3,6 +3,7 @@ interface Env {
 	ASSETS: Fetcher;
 	RESEND_API_KEY: string;
 	CRON_SECRET: string;
+	OWLTREK_DB: D1Database;
 }
 
 type Runtime = import("@astrojs/cloudflare").Runtime<Env>;
