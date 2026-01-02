@@ -2,13 +2,41 @@
 import { getNextTwoWeeks, formatTimeInTimezone, formatDateInTimezone } from '../lib/dates';
 import { analyzeNight, getMoonPhaseName, type NightAnalysis } from '../lib/analyzer';
 import SubscribeForm from '../components/SubscribeForm.astro';
+import LocationPicker from '../components/LocationPicker.astro';
 
-// Location Configuration - San Diego, CA
-const LOCATION = {
+// Get location from Cloudflare's cf object, with fallback
+const cf = Astro.locals.runtime?.cf;
+
+// Check for query params (user-selected location)
+const url = new URL(Astro.request.url);
+const queryLat = url.searchParams.get('lat');
+const queryLon = url.searchParams.get('lon');
+const queryTz = url.searchParams.get('tz');
+const queryName = url.searchParams.get('name');
+
+// Default fallback location (San Diego, CA)
+const DEFAULT_LOCATION = {
   lat: 32.7157,
   lon: -117.1611,
   timezone: 'America/Los_Angeles',
   name: 'San Diego, CA'
+};
+
+// Priority: Query params > Cloudflare geolocation > Default
+const LOCATION = queryLat && queryLon ? {
+  lat: parseFloat(queryLat),
+  lon: parseFloat(queryLon),
+  timezone: queryTz || DEFAULT_LOCATION.timezone,
+  name: queryName || 'Custom Location'
+} : {
+  lat: cf?.latitude ? parseFloat(cf.latitude as string) : DEFAULT_LOCATION.lat,
+  lon: cf?.longitude ? parseFloat(cf.longitude as string) : DEFAULT_LOCATION.lon,
+  timezone: (cf?.timezone as string) || DEFAULT_LOCATION.timezone,
+  name: cf?.city && cf?.region 
+    ? `${cf.city}, ${cf.region}` 
+    : cf?.city 
+      ? String(cf.city)
+      : DEFAULT_LOCATION.name
 };
 
 // Get next 14 days in the target timezone
@@ -37,8 +65,14 @@ const goodNightsList = analyses.map((a, i) => ({ analysis: a, index: i })).filte
     
     <!-- Header -->
     <header class="text-center mb-10">
-      <h1 class="text-3xl font-bold mb-1">🦉 OwlTrek</h1>
-      <p class="text-night-400 text-sm">📍 {LOCATION.name}</p>
+      <h1 class="text-3xl font-bold mb-3">🦉 OwlTrek</h1>
+      <p class="text-night-500 text-sm mb-3">Night sky forecast for</p>
+      <LocationPicker 
+        currentName={LOCATION.name}
+        currentLat={LOCATION.lat}
+        currentLon={LOCATION.lon}
+        currentTimezone={LOCATION.timezone}
+      />
     </header>
 
     <!-- Good Nights Section -->
