@@ -63,7 +63,8 @@ export const GET: APIRoute = async ({ url, locals }) => {
       `<!DOCTYPE html>
       <html>
       <body style="font-family: system-ui, sans-serif; background: #0f0d1a; color: white; padding: 32px; text-align: center;">
-        <h1 style="color: #22c55e;">🦉 You're In!</h1>
+        <h1 style="color: #22c55e;">1
+        UpdYou're In!</h1>
         <p>Your subscription has been confirmed. You'll start receiving night sky alerts soon!</p>
         <a href="https://owltrek.com" style="display: inline-block; background: #6366f1; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; margin-top: 16px;">
           Go to OwlTrek
