@@ -7,7 +7,7 @@
 		"build": "astro build",
 		"preview": "astro build && wrangler dev",
 		"astro": "astro",
-		"deploy": "npx wrangler deploy --x-autoconfig",
+		"deploy": "astro build && wrangler deploy",
 		"cf-typegen": "wrangler types"
 	},
 	"dependencies": {
