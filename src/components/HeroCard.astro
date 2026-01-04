@@ -1,0 +1,130 @@
+---
+import { formatDateInTimezone, formatTimeInTimezone } from '../lib/dates';
+import { getMoonPhaseName, type NightAnalysis } from '../lib/analyzer';
+
+interface Props {
+  nextGoodNight: {
+    analysis: NightAnalysis;
+    date: Date;
+    daysFromNow: number;
+  } | null;
+  timezone: string;
+}
+
+const { nextGoodNight, timezone } = Astro.props;
+
+const isHiking = nextGoodNight?.analysis.goodNightType === 'hiking';
+
+// Determine which moon time to highlight based on the reason
+function getRelevantMoonTime(analysis: NightAnalysis): { label: string; time: Date | null } | null {
+  if (!analysis.reason) return null;
+  
+  const reason = analysis.reason.toLowerCase();
+  
+  // Late moonrise scenarios - show when moon rises
+  if (reason.includes('late moonrise') || reason.includes('moon down all evening')) {
+    return { label: 'Moon rises', time: analysis.moonRise };
+  }
+  
+  // Early moonset scenarios - show when moon sets
+  if (reason.includes('moon sets early')) {
+    return { label: 'Moon sets', time: analysis.moonSet };
+  }
+  
+  return null;
+}
+
+const relevantMoonTime = nextGoodNight ? getRelevantMoonTime(nextGoodNight.analysis) : null;
+---
+
+{nextGoodNight ? (
+  <section class={`relative overflow-hidden rounded-2xl p-6 mb-8 ${
+    isHiking 
+      ? 'bg-gradient-to-br from-amber-900/80 via-amber-800/60 to-orange-900/80 border-2 border-amber-500/50' 
+      : 'bg-gradient-to-br from-indigo-900/80 via-purple-900/60 to-slate-900/80 border-2 border-indigo-500/50'
+  }`}>
+    <!-- Decorative elements -->
+    <div class="absolute top-4 right-4 opacity-20">
+      {isHiking ? (
+        <svg class="w-24 h-24" viewBox="0 0 100 100" fill="currentColor">
+          <circle cx="50" cy="50" r="45" class="text-amber-300"/>
+        </svg>
+      ) : (
+        <svg class="w-24 h-24" viewBox="0 0 100 100" fill="currentColor">
+          <circle cx="50" cy="50" r="3" class="text-white"/>
+          <circle cx="30" cy="30" r="2" class="text-white"/>
+          <circle cx="70" cy="25" r="2.5" class="text-white"/>
+          <circle cx="20" cy="60" r="1.5" class="text-white"/>
+          <circle cx="75" cy="70" r="2" class="text-white"/>
+          <circle cx="45" cy="20" r="1.5" class="text-white"/>
+          <circle cx="60" cy="75" r="1.5" class="text-white"/>
+          <circle cx="85" cy="45" r="2" class="text-white"/>
+          <circle cx="15" cy="40" r="1.5" class="text-white"/>
+        </svg>
+      )}
+    </div>
+    
+    <div class="relative z-10">
+      <p class={`text-sm font-medium uppercase tracking-wider mb-2 ${
+        isHiking ? 'text-amber-300' : 'text-indigo-300'
+      }`}>
+        {isHiking ? '🌕 Your Next Hiking Night' : '✨ Your Next Stargazing Night'}
+      </p>
+      
+      <h2 class="text-3xl font-bold text-white mb-1">
+        {nextGoodNight.daysFromNow === 0 
+          ? 'Tonight!' 
+          : nextGoodNight.daysFromNow === 1 
+            ? 'Tomorrow' 
+            : formatDateInTimezone(nextGoodNight.date, timezone)}
+      </h2>
+      
+      <p class={`text-lg mb-4 ${isHiking ? 'text-amber-200' : 'text-indigo-200'}`}>
+        {nextGoodNight.analysis.reason}
+      </p>
+      
+      <div class="flex flex-wrap gap-4 text-sm">
+        <div class={`flex items-center gap-2 px-3 py-1.5 rounded-full ${
+          isHiking ? 'bg-amber-950/50 text-amber-200' : 'bg-indigo-950/50 text-indigo-200'
+        }`}>
+          <span>🌅</span>
+          <span>Sunset {formatTimeInTimezone(nextGoodNight.analysis.sunset, timezone)}</span>
+        </div>
+        <div class={`flex items-center gap-2 px-3 py-1.5 rounded-full ${
+          isHiking ? 'bg-amber-950/50 text-amber-200' : 'bg-indigo-950/50 text-indigo-200'
+        }`}>
+          <span>🌙</span>
+          <span>{getMoonPhaseName(nextGoodNight.analysis.moonPhase)} • {nextGoodNight.analysis.illumination}%</span>
+        </div>
+        {relevantMoonTime && relevantMoonTime.time && (
+          <div class={`flex items-center gap-2 px-3 py-1.5 rounded-full ${
+            isHiking ? 'bg-amber-950/50 text-amber-200' : 'bg-indigo-950/50 text-indigo-200'
+          }`}>
+            <span>🌙</span>
+            <span>{relevantMoonTime.label} {formatTimeInTimezone(relevantMoonTime.time, timezone)}</span>
+          </div>
+        )}
+        {nextGoodNight.analysis.hasWeatherData && (
+          <div class={`flex items-center gap-2 px-3 py-1.5 rounded-full ${
+            isHiking ? 'bg-amber-950/50 text-amber-200' : 'bg-indigo-950/50 text-indigo-200'
+          }`}>
+            <span>☁️</span>
+            <span>{nextGoodNight.analysis.cloudCover}% clouds</span>
+          </div>
+        )}
+      </div>
+      
+      {nextGoodNight.daysFromNow > 0 && (
+        <p class="mt-4 text-xs opacity-70 text-white">
+          {nextGoodNight.daysFromNow} {nextGoodNight.daysFromNow === 1 ? 'day' : 'days'} from now
+        </p>
+      )}
+    </div>
+  </section>
+) : (
+  <section class="relative overflow-hidden rounded-2xl p-6 mb-8 bg-gradient-to-br from-slate-800/80 to-slate-900/80 border-2 border-slate-700/50">
+    <p class="text-slate-400 text-center">
+      No ideal nights in the forecast — check the moon calendar below for upcoming opportunities.
+    </p>
+  </section>
+)}
