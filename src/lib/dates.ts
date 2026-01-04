@@ -2,7 +2,8 @@ import { toZonedTime, format } from 'date-fns-tz';
 import { addDays, startOfDay } from 'date-fns';
 
 /**
- * Gets the next 14 days starting from "today" in the specified timezone.
+ * Gets the next 7 days starting from "today" in the specified timezone.
+ * Limited to 7 days because weather forecast accuracy degrades beyond that.
  * 
  * Critical for Cloudflare Workers: The server runs in UTC, but we need
  * to determine what "today" is in the user's local timezone.
@@ -10,7 +11,7 @@ import { addDays, startOfDay } from 'date-fns';
  * Example: If it's Monday 11pm in Los Angeles (Tuesday 7am UTC),
  * this function correctly returns dates starting from Monday.
  */
-export function getNextTwoWeeks(timezone: string): Date[] {
+export function getNextWeek(timezone: string): Date[] {
   // Get current UTC time
   const nowUtc = new Date();
   
@@ -20,9 +21,9 @@ export function getNextTwoWeeks(timezone: string): Date[] {
   // Get the start of the local day (midnight in that timezone)
   const localStartOfDay = startOfDay(localNow);
   
-  // Generate 14 days starting from local "today"
+  // Generate 7 days starting from local "today"
   const dates: Date[] = [];
-  for (let i = 0; i < 14; i++) {
+  for (let i = 0; i < 7; i++) {
     // addDays on the local date, then we have a Date object
     // representing that local calendar date
     dates.push(addDays(localStartOfDay, i));
@@ -46,4 +47,21 @@ export function formatTimeInTimezone(date: Date | null, timezone: string): strin
  */
 export function formatDateInTimezone(date: Date, timezone: string): string {
   return format(toZonedTime(date, timezone), 'EEE, MMM d', { timeZone: timezone });
+}
+
+/**
+ * Gets the next N days starting from "today" in the specified timezone.
+ * Used for moon calendar which doesn't need weather data.
+ */
+export function getNextDays(timezone: string, count: number): Date[] {
+  const nowUtc = new Date();
+  const localNow = toZonedTime(nowUtc, timezone);
+  const localStartOfDay = startOfDay(localNow);
+  
+  const dates: Date[] = [];
+  for (let i = 0; i < count; i++) {
+    dates.push(addDays(localStartOfDay, i));
+  }
+  
+  return dates;
 }

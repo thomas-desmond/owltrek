@@ -1,0 +1,259 @@
+---
+import SunCalc from 'suncalc';
+import { getNextDays, formatDateInTimezone } from '../lib/dates';
+import { getMoonPhaseName } from '../lib/analyzer';
+
+interface Props {
+  lat: number;
+  lon: number;
+  timezone: string;
+}
+
+const { lat, lon, timezone } = Astro.props;
+
+const CALENDAR_DAYS = 42; // 6 weeks
+const dates = getNextDays(timezone, CALENDAR_DAYS);
+
+interface MoonDay {
+  date: Date;
+  dateString: string;
+  phase: number;
+  illumination: number;
+  phaseName: string;
+  isGoodPotential: 'stargazing' | 'hiking' | null;
+  sunset: string;
+  moonRise: string;
+  moonSet: string;
+}
+
+// Helper to format time
+function formatTime(date: Date | undefined): string {
+  if (!date || isNaN(date.getTime())) return '—';
+  return date.toLocaleTimeString('en-US', { 
+    hour: 'numeric', 
+    minute: '2-digit',
+    timeZone: timezone 
+  });
+}
+
+const moonDays: MoonDay[] = dates.map(date => {
+  const moonIllum = SunCalc.getMoonIllumination(date);
+  const illuminationPercent = Math.round(moonIllum.fraction * 100);
+  const moonTimes = SunCalc.getMoonTimes(date, lat, lon);
+  const sunTimes = SunCalc.getTimes(date, lat, lon);
+  
+  // Determine potential (assuming clear weather)
+  let isGoodPotential: 'stargazing' | 'hiking' | null = null;
+  if (illuminationPercent > 90) {
+    isGoodPotential = 'hiking';
+  } else if (illuminationPercent < 10) {
+    isGoodPotential = 'stargazing';
+  }
+  
+  return {
+    date,
+    dateString: formatDateInTimezone(date, timezone),
+    phase: moonIllum.phase,
+    illumination: illuminationPercent,
+    phaseName: getMoonPhaseName(moonIllum.phase),
+    isGoodPotential,
+    sunset: formatTime(sunTimes.sunset),
+    moonRise: formatTime(moonTimes.rise),
+    moonSet: formatTime(moonTimes.set),
+  };
+});
+
+// Serialize moon data for client-side use
+const moonDaysJson = JSON.stringify(moonDays.map(d => ({
+  dateString: d.dateString,
+  phaseName: d.phaseName,
+  illumination: d.illumination,
+  isGoodPotential: d.isGoodPotential,
+  sunset: d.sunset,
+  moonRise: d.moonRise,
+  moonSet: d.moonSet,
+})));
+
+// Get moon phase emoji based on phase value
+function getMoonEmoji(phase: number): string {
+  if (phase < 0.0625) return '🌑';
+  if (phase < 0.1875) return '🌒';
+  if (phase < 0.3125) return '🌓';
+  if (phase < 0.4375) return '🌔';
+  if (phase < 0.5625) return '🌕';
+  if (phase < 0.6875) return '🌖';
+  if (phase < 0.8125) return '🌗';
+  if (phase < 0.9375) return '🌘';
+  return '🌑';
+}
+
+// Group by weeks for display
+const weeks: MoonDay[][] = [];
+for (let i = 0; i < moonDays.length; i += 7) {
+  weeks.push(moonDays.slice(i, i + 7));
+}
+---
+
+<section class="mb-8">
+  <div class="flex items-center justify-between mb-4">
+    <h2 class="text-lg font-medium text-night-300">Moon Calendar</h2>
+    <p class="text-xs text-night-500">Next 6 weeks • Weather not included</p>
+  </div>
+  
+  <div class="bg-night-900/40 rounded-xl border border-night-800 overflow-hidden">
+    <!-- Day headers -->
+    <div class="grid grid-cols-7 border-b border-night-800">
+      {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+        <div class="py-2 text-center text-xs text-night-500 font-medium">
+          {day}
+        </div>
+      ))}
+    </div>
+    
+    <!-- Calendar grid -->
+    <div class="divide-y divide-night-800">
+      {weeks.map((week, weekIndex) => (
+        <div class="grid grid-cols-7">
+          {week.map((moonDay, dayIndex) => {
+            const isToday = weekIndex === 0 && dayIndex === new Date().getDay();
+            const dayNum = moonDay.date.getDate();
+            const isFirstOfMonth = dayNum === 1;
+            
+            return (
+              <button 
+                type="button"
+                class={`calendar-day relative p-2 min-h-[70px] w-full text-left transition-colors hover:bg-night-800/50 cursor-pointer ${
+                  moonDay.isGoodPotential === 'hiking'
+                    ? 'bg-amber-900/20'
+                    : moonDay.isGoodPotential === 'stargazing'
+                      ? 'bg-indigo-900/20'
+                      : ''
+                } ${isToday ? 'ring-2 ring-inset ring-indigo-500' : ''}`}
+                data-day-index={weekIndex * 7 + dayIndex}
+              >
+                <div class="flex items-start justify-between">
+                  <span class={`text-xs ${isToday ? 'text-indigo-400 font-bold' : 'text-night-400'}`}>
+                    {isFirstOfMonth ? (
+                      <span class="text-white font-medium">
+                        {moonDay.date.toLocaleDateString('en-US', { month: 'short' })} {dayNum}
+                      </span>
+                    ) : dayNum}
+                  </span>
+                  {moonDay.isGoodPotential && (
+                    <span class={`text-[10px] px-1 rounded ${
+                      moonDay.isGoodPotential === 'hiking' 
+                        ? 'bg-amber-500/30 text-amber-300' 
+                        : 'bg-indigo-500/30 text-indigo-300'
+                    }`}>
+                      {moonDay.isGoodPotential === 'hiking' ? '🥾' : '⭐'}
+                    </span>
+                  )}
+                </div>
+                <div class="mt-1 text-center">
+                  <span class="text-xl">{getMoonEmoji(moonDay.phase)}</span>
+                  <p class="text-[10px] text-night-500 mt-0.5">{moonDay.illumination}%</p>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  </div>
+  
+  <!-- Detail Panel (shown on click) -->
+  <div id="day-detail-panel" class="hidden mt-4 p-4 bg-night-900/60 rounded-xl border border-night-700">
+    <div class="flex items-start justify-between mb-3">
+      <div>
+        <h3 id="detail-date" class="text-lg font-semibold text-white">—</h3>
+        <p id="detail-phase" class="text-sm text-night-400">—</p>
+      </div>
+      <button id="close-detail" class="text-night-500 hover:text-white text-xl leading-none">&times;</button>
+    </div>
+    <div class="grid grid-cols-3 gap-4 text-sm">
+      <div class="text-center p-3 bg-night-800/50 rounded-lg">
+        <p class="text-night-500 text-xs mb-1">Sunset</p>
+        <p id="detail-sunset" class="text-white font-medium">—</p>
+      </div>
+      <div class="text-center p-3 bg-night-800/50 rounded-lg">
+        <p class="text-night-500 text-xs mb-1">Moon Rise</p>
+        <p id="detail-moonrise" class="text-white font-medium">—</p>
+      </div>
+      <div class="text-center p-3 bg-night-800/50 rounded-lg">
+        <p class="text-night-500 text-xs mb-1">Moon Set</p>
+        <p id="detail-moonset" class="text-white font-medium">—</p>
+      </div>
+    </div>
+    <p id="detail-tip" class="mt-3 text-xs text-night-500 hidden"></p>
+  </div>
+
+  <!-- Legend -->
+  <div class="flex flex-wrap gap-4 mt-3 text-xs text-night-400">
+    <div class="flex items-center gap-1.5">
+      <span class="w-3 h-3 rounded bg-indigo-900/40 border border-indigo-500/30"></span>
+      <span>New Moon (stargazing)</span>
+    </div>
+    <div class="flex items-center gap-1.5">
+      <span class="w-3 h-3 rounded bg-amber-900/40 border border-amber-500/30"></span>
+      <span>Full Moon (night hiking)</span>
+    </div>
+    <div class="flex items-center gap-1.5">
+      <span class="w-3 h-3 rounded ring-2 ring-indigo-500"></span>
+      <span>Today</span>
+    </div>
+  </div>
+</section>
+
+<script define:vars={{ moonDaysJson }}>
+  const moonDays = JSON.parse(moonDaysJson);
+  const panel = document.getElementById('day-detail-panel');
+  const closeBtn = document.getElementById('close-detail');
+  const calendarDays = document.querySelectorAll('.calendar-day');
+  
+  let selectedDay = null;
+  
+  calendarDays.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const index = parseInt(btn.dataset.dayIndex, 10);
+      const day = moonDays[index];
+      
+      // Update panel content
+      document.getElementById('detail-date').textContent = day.dateString;
+      document.getElementById('detail-phase').textContent = `${day.phaseName} • ${day.illumination}% illumination`;
+      document.getElementById('detail-sunset').textContent = day.sunset;
+      document.getElementById('detail-moonrise').textContent = day.moonRise;
+      document.getElementById('detail-moonset').textContent = day.moonSet;
+      
+      // Show contextual tip
+      const tipEl = document.getElementById('detail-tip');
+      if (day.isGoodPotential === 'stargazing') {
+        tipEl.textContent = '✨ Dark skies — ideal for stargazing (weather permitting)';
+        tipEl.classList.remove('hidden');
+      } else if (day.isGoodPotential === 'hiking') {
+        tipEl.textContent = '🌕 Bright moon — great for night hiking (weather permitting)';
+        tipEl.classList.remove('hidden');
+      } else {
+        tipEl.classList.add('hidden');
+      }
+      
+      // Highlight selected day
+      if (selectedDay) {
+        selectedDay.classList.remove('ring-2', 'ring-white/50');
+      }
+      btn.classList.add('ring-2', 'ring-white/50');
+      selectedDay = btn;
+      
+      // Show panel
+      panel.classList.remove('hidden');
+      panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+  });
+  
+  closeBtn?.addEventListener('click', () => {
+    panel.classList.add('hidden');
+    if (selectedDay) {
+      selectedDay.classList.remove('ring-2', 'ring-white/50');
+      selectedDay = null;
+    }
+  });
+</script>

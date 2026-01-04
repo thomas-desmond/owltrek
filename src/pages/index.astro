@@ -1,8 +1,11 @@
 ---
-import { getNextTwoWeeks, formatTimeInTimezone, formatDateInTimezone } from '../lib/dates';
+import { getNextWeek, formatTimeInTimezone, formatDateInTimezone } from '../lib/dates';
 import { analyzeNight, getMoonPhaseName, type NightAnalysis } from '../lib/analyzer';
+import { getWeatherForecast } from '../lib/weather';
 import SubscribeForm from '../components/SubscribeForm.astro';
 import LocationPicker from '../components/LocationPicker.astro';
+import HeroCard from '../components/HeroCard.astro';
+import MoonCalendar from '../components/MoonCalendar.astro';
 
 // Get location from Cloudflare's cf object, with fallback
 const cf = Astro.locals.runtime?.cf;
@@ -39,16 +42,28 @@ const LOCATION = queryLat && queryLon ? {
       : DEFAULT_LOCATION.name
 };
 
-// Get next 14 days in the target timezone
-const dates = getNextTwoWeeks(LOCATION.timezone);
+// Get next 7 days in the target timezone (limited by weather forecast accuracy)
+const dates = getNextWeek(LOCATION.timezone);
 
-// Analyze each night
-const analyses: NightAnalysis[] = dates.map(date => 
-  analyzeNight(date, LOCATION.lat, LOCATION.lon, LOCATION.timezone)
-);
+// Fetch weather data
+let weatherData = new Map();
+try {
+  weatherData = await getWeatherForecast(LOCATION.lat, LOCATION.lon);
+} catch (e) {
+  console.error('Weather fetch failed:', e);
+}
 
-// Separate good nights from regular nights
-const goodNightsList = analyses.map((a, i) => ({ analysis: a, index: i })).filter(x => x.analysis.isGoodNight);
+// Analyze each night, passing weather data when available
+const analyses: NightAnalysis[] = dates.map(date => {
+  const dateStr = date.toISOString().split('T')[0];
+  const weather = weatherData.get(dateStr);
+  return analyzeNight(date, LOCATION.lat, LOCATION.lon, LOCATION.timezone, weather);
+});
+
+// Find the next good night for the hero card
+const nextGoodNight = analyses
+  .map((a, i) => ({ analysis: a, date: dates[i], daysFromNow: i }))
+  .find(x => x.analysis.isGoodNight) || null;
 ---
 
 <!DOCTYPE html>
@@ -64,7 +79,7 @@ const goodNightsList = analyses.map((a, i) => ({ analysis: a, index: i })).filte
   <div class="container mx-auto px-4 py-8 max-w-4xl">
     
     <!-- Header -->
-    <header class="text-center mb-10">
+    <header class="text-center mb-8">
       <h1 class="text-3xl font-bold mb-3">🦉 OwlTrek</h1>
       <p class="text-night-500 text-sm mb-3">Night sky forecast for</p>
       <LocationPicker 
@@ -75,32 +90,78 @@ const goodNightsList = analyses.map((a, i) => ({ analysis: a, index: i })).filte
       />
     </header>
 
-    <!-- Good Nights Section -->
-    {goodNightsList.length > 0 ? (
-      <section class="mb-12">
-        <h2 class="text-lg font-medium text-night-300 mb-4">Go outside on these nights over the next 14 days</h2>
-        <div class="space-y-3">
-          {goodNightsList.map(({ analysis, index }) => (
-            <details class={`group rounded-lg border overflow-hidden ${
-              analysis.goodNightType === 'hiking' 
-                ? 'bg-amber-900/20 border-amber-500/40' 
-                : 'bg-indigo-900/20 border-indigo-500/40'
+    <!-- Hero Card: Next Good Night -->
+    <HeroCard nextGoodNight={nextGoodNight} timezone={LOCATION.timezone} />
+
+    <!-- Tab Navigation -->
+    <div class="flex border-b border-night-800 mb-6">
+      <button 
+        id="tab-week" 
+        class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-indigo-500 text-white"
+        data-tab="week"
+      >
+        This Week
+      </button>
+      <button 
+        id="tab-calendar" 
+        class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-night-400 hover:text-night-200"
+        data-tab="calendar"
+      >
+        Moon Calendar
+      </button>
+    </div>
+
+    <!-- Tab Content: This Week -->
+    <div id="content-week" class="tab-content">
+    <!-- 7 Day Forecast -->
+    <section class="mb-8">
+      <h2 class="text-lg font-medium text-night-300 mb-4">7 Day Night Forecast</h2>
+      <div class="space-y-2">
+        {analyses.map((analysis, index) => {
+          const isGood = analysis.isGoodNight;
+          const isHiking = analysis.goodNightType === 'hiking';
+          return (
+            <details class={`group rounded-xl border-2 overflow-hidden transition-all ${
+              isGood
+                ? isHiking 
+                  ? 'bg-amber-900/30 border-amber-500 shadow-lg shadow-amber-500/20' 
+                  : 'bg-indigo-900/30 border-indigo-500 shadow-lg shadow-indigo-500/20'
+                : 'bg-night-900/20 border-night-800 opacity-60'
             }`}>
-              <summary class="p-4 cursor-pointer list-none flex items-center justify-between hover:bg-white/5 transition-colors">
-                <div>
-                  <p class="font-semibold text-lg">
-                    {index === 0 ? 'Tonight' : formatDateInTimezone(dates[index], LOCATION.timezone)}
-                  </p>
-                  <p class={`text-sm mt-0.5 ${
-                    analysis.goodNightType === 'hiking' ? 'text-amber-400' : 'text-indigo-400'
-                  }`}>
-                    {analysis.goodNightType === 'hiking' ? '🌕' : '✨'} {analysis.reason}
-                  </p>
+              <summary class={`p-4 cursor-pointer list-none flex items-center justify-between transition-colors ${
+                isGood ? 'hover:bg-white/10' : 'hover:bg-white/5'
+              }`}>
+                <div class="flex items-center gap-4">
+                  {isGood ? (
+                    <span class="text-3xl">{isHiking ? '🌕' : '✨'}</span>
+                  ) : (
+                    <span class="text-xl text-night-600">🌙</span>
+                  )}
+                  <div>
+                    <p class={`font-semibold ${
+                      isGood 
+                        ? isHiking ? 'text-amber-100 text-lg' : 'text-indigo-100 text-lg'
+                        : 'text-night-400'
+                    }`}>
+                      {index === 0 ? 'Tonight' : formatDateInTimezone(dates[index], LOCATION.timezone)}
+                    </p>
+                    {isGood ? (
+                      <p class={`text-sm font-medium ${isHiking ? 'text-amber-400' : 'text-indigo-400'}`}>
+                        {analysis.reason}
+                      </p>
+                    ) : (
+                      <p class="text-sm text-night-500">
+                        {getMoonPhaseName(analysis.moonPhase)} • {analysis.weather}
+                      </p>
+                    )}
+                  </div>
                 </div>
                 <div class="flex items-center gap-3">
                   <div class="text-right text-sm text-night-400">
-                    <p>{getMoonPhaseName(analysis.moonPhase)}</p>
-                    <p>{analysis.illumination}% lit</p>
+                    <p>{analysis.illumination}% moon</p>
+                    {analysis.hasWeatherData && analysis.cloudCover !== null && (
+                      <p>{analysis.cloudCover}% clouds</p>
+                    )}
                   </div>
                   <span class="text-night-500 group-open:rotate-180 transition-transform">▼</span>
                 </div>
@@ -131,49 +192,35 @@ const goodNightsList = analyses.map((a, i) => ({ analysis: a, index: i })).filte
                     <span class="text-night-400">Weather</span>
                     <span class="text-white">{analysis.weather}</span>
                   </div>
+                  {analysis.hasWeatherData && (
+                    <>
+                      <div class="flex justify-between">
+                        <span class="text-night-400">Cloud Cover</span>
+                        <span class="text-white">{analysis.cloudCover}%</span>
+                      </div>
+                      <div class="flex justify-between">
+                        <span class="text-night-400">Temperature</span>
+                        <span class="text-white">{analysis.temperature}°C</span>
+                      </div>
+                      <div class="flex justify-between">
+                        <span class="text-night-400">Wind</span>
+                        <span class="text-white">{analysis.windSpeed} km/h</span>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             </details>
-          ))}
-        </div>
-      </section>
-    ) : (
-      <section class="mb-12 text-center py-8">
-        <p class="text-night-400">No ideal nights in the next two weeks.</p>
-        <p class="text-night-500 text-sm mt-1">Check back later for updates.</p>
-      </section>
-    )}
-
-    <!-- All Nights Calendar -->
-    <section>
-      <h2 class="text-lg font-medium text-night-300 mb-4">Full 14 day forecast</h2>
-      <div class="grid grid-cols-7 gap-1 text-center text-xs">
-        {analyses.map((analysis, index) => {
-          const isGood = analysis.isGoodNight;
-          const isHiking = analysis.goodNightType === 'hiking';
-          return (
-            <div 
-              class={`rounded p-2 ${
-                isGood 
-                  ? isHiking 
-                    ? 'bg-amber-900/30 border border-amber-500/30' 
-                    : 'bg-indigo-900/30 border border-indigo-500/30'
-                  : 'bg-night-900/50'
-              }`}
-              title={`${analysis.dateString} - ${getMoonPhaseName(analysis.moonPhase)} (${analysis.illumination}%)`}
-            >
-              <p class={`font-medium ${index === 0 ? 'text-yellow-400' : isGood ? 'text-white' : 'text-night-400'}`}>
-                {new Date(analysis.dateString).getDate()}
-              </p>
-              <p class="text-night-500 mt-0.5">{analysis.illumination}%</p>
-              {isGood && (
-                <p class="mt-0.5">{isHiking ? '🌕' : '✨'}</p>
-              )}
-            </div>
           );
         })}
       </div>
     </section>
+    </div>
+
+    <!-- Tab Content: Moon Calendar -->
+    <div id="content-calendar" class="tab-content hidden">
+      <MoonCalendar lat={LOCATION.lat} lon={LOCATION.lon} timezone={LOCATION.timezone} />
+    </div>
 
     <!-- Subscribe Form -->
     <SubscribeForm />
@@ -224,5 +271,31 @@ const goodNightsList = analyses.map((a, i) => ({ analysis: a, index: i })).filte
       <p>Times in {LOCATION.timezone} • Moon data via SunCalc</p>
     </footer>
   </div>
+
+  <script>
+    // Tab switching logic
+    const tabBtns = document.querySelectorAll<HTMLButtonElement>('.tab-btn');
+    const tabContents = document.querySelectorAll('.tab-content');
+
+    tabBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tab = btn.dataset.tab;
+        
+        // Update button styles
+        tabBtns.forEach(b => {
+          b.classList.remove('border-indigo-500', 'text-white');
+          b.classList.add('border-transparent', 'text-night-400');
+        });
+        btn.classList.remove('border-transparent', 'text-night-400');
+        btn.classList.add('border-indigo-500', 'text-white');
+        
+        // Show/hide content
+        tabContents.forEach(content => {
+          content.classList.add('hidden');
+        });
+        document.getElementById(`content-${tab}`)?.classList.remove('hidden');
+      });
+    });
+  </script>
 </body>
 </html>
