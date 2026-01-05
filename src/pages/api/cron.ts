@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro';
-import { getNextTwoWeeks, formatDateInTimezone } from '../../lib/dates';
+import { getNextDays, formatDateInTimezone } from '../../lib/dates';
 import { analyzeNight, getMoonPhaseName } from '../../lib/analyzer';
 
 // Location Configuration - San Diego, CA
@@ -12,7 +12,7 @@ const LOCATION = {
 
 export const GET: APIRoute = async () => {
   // Get next 14 days in the target timezone
-  const dates = getNextTwoWeeks(LOCATION.timezone);
+  const dates = getNextDays(LOCATION.timezone, 14);
   
   // Analyze each night
   const analyses = dates.map(date => 
