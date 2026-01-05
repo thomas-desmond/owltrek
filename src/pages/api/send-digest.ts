@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
-import { getNextDays, formatDateInTimezone } from '../../lib/dates';
+import { getNextWeek, formatDateInTimezone } from '../../lib/dates';
 import { analyzeNight, getMoonPhaseName } from '../../lib/analyzer';
+import { getWeatherForecast } from '../../lib/weather';
 
 interface Subscriber {
   email: string;
@@ -19,7 +20,58 @@ interface LocationConfig {
   name: string;
 }
 
-function generateEmailHtml(goodNights: any[], location: LocationConfig, unsubscribeUrl: string): string {
+interface NextOutdoorDay {
+  displayDate: string;
+  daysFromNow: number;
+  reason: string;
+  type: 'hiking' | 'stargazing';
+  moonPhase: string;
+  illumination: number;
+  weather: string;
+}
+
+function generateHeroHtml(nextOutdoorDay: NextOutdoorDay | null): string {
+  if (!nextOutdoorDay) {
+    return `
+      <div style="margin-bottom: 24px; padding: 20px; background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%); border-radius: 12px; text-align: center;">
+        <p style="margin: 0; font-size: 14px; color: #9ca3af;">Next Outdoor Night</p>
+        <p style="margin: 8px 0 0; font-size: 18px; color: #e5e7eb;">No ideal nights this week</p>
+        <p style="margin: 8px 0 0; font-size: 14px; color: #6b7280;">Check back for updated forecasts</p>
+      </div>
+    `;
+  }
+
+  const isHiking = nextOutdoorDay.type === 'hiking';
+  const emoji = isHiking ? '🌕' : '✨';
+  const gradientColors = isHiking 
+    ? 'linear-gradient(135deg, #78350f 0%, #b45309 100%)' 
+    : 'linear-gradient(135deg, #1e1b4b 0%, #4338ca 100%)';
+  const accentColor = isHiking ? '#fbbf24' : '#a5b4fc';
+  
+  const daysText = nextOutdoorDay.daysFromNow === 0 
+    ? 'Tonight!' 
+    : nextOutdoorDay.daysFromNow === 1 
+      ? 'Tomorrow' 
+      : `In ${nextOutdoorDay.daysFromNow} days`;
+
+  return `
+    <div style="margin-bottom: 24px; padding: 20px; background: ${gradientColors}; border-radius: 12px; text-align: center;">
+      <p style="margin: 0; font-size: 14px; color: rgba(255,255,255,0.7);">Next Outdoor Night</p>
+      <p style="margin: 8px 0 0; font-size: 32px;">${emoji}</p>
+      <p style="margin: 8px 0 0; font-size: 24px; font-weight: bold; color: white;">${nextOutdoorDay.displayDate}</p>
+      <p style="margin: 4px 0 0; font-size: 16px; color: ${accentColor};">${daysText}</p>
+      <p style="margin: 12px 0 0; font-size: 14px; color: rgba(255,255,255,0.9);">${nextOutdoorDay.reason}</p>
+      <p style="margin: 8px 0 0; font-size: 12px; color: rgba(255,255,255,0.6);">
+        ${nextOutdoorDay.moonPhase} • ${nextOutdoorDay.illumination}% moon • ${nextOutdoorDay.weather}
+      </p>
+      <a href="https://owltrek.com" style="display: inline-block; margin-top: 16px; padding: 10px 24px; background: rgba(255,255,255,0.2); color: white; text-decoration: none; border-radius: 6px; font-size: 14px; font-weight: 500;">View Full Forecast →</a>
+    </div>
+  `;
+}
+
+function generateEmailHtml(goodNights: any[], nextOutdoorDay: NextOutdoorDay | null, location: LocationConfig, unsubscribeUrl: string): string {
+  const heroHtml = generateHeroHtml(nextOutdoorDay);
+  
   const nightsHtml = goodNights.length > 0
     ? goodNights.map(night => `
         <div style="margin-bottom: 16px; padding: 12px; background: #1e1b4b; border-radius: 8px; border-left: 4px solid ${night.type === 'hiking' ? '#f59e0b' : '#6366f1'};">
@@ -28,11 +80,11 @@ function generateEmailHtml(goodNights: any[], location: LocationConfig, unsubscr
             ${night.type === 'hiking' ? '🌕' : '✨'} ${night.reason}
           </p>
           <p style="margin: 4px 0 0; color: #9ca3af; font-size: 14px;">
-            ${night.moonPhase} • ${night.illumination}% illumination
+            ${night.moonPhase} • ${night.illumination}% illumination • ${night.weather}
           </p>
         </div>
       `).join('')
-    : '<p style="color: #9ca3af;">No ideal nights in the next two weeks. Check back later!</p>';
+    : '<p style="color: #9ca3af;">No ideal nights in the next 7 days. Check back later!</p>';
 
   return `
     <!DOCTYPE html>
@@ -45,15 +97,22 @@ function generateEmailHtml(goodNights: any[], location: LocationConfig, unsubscr
         <h1 style="margin: 0 0 8px;">🦉 OwlTrek Weekly Forecast</h1>
         <p style="margin: 0 0 24px; color: #9ca3af;">📍 ${location.name}</p>
         
+        ${heroHtml}
+        
         <h2 style="margin: 0 0 16px; font-size: 18px; color: #e5e7eb;">
-          ${goodNights.length > 0 ? 'Good nights to go outside:' : 'This week\'s outlook'}
+          ${goodNights.length > 0 ? 'All good nights this week:' : 'This week\'s outlook'}
         </h2>
         
         ${nightsHtml}
         
+        <div style="margin-top: 24px; padding: 16px; background: #1e1b4b; border-radius: 8px; text-align: center;">
+          <p style="margin: 0 0 12px; color: #e5e7eb; font-size: 14px;">Want more details? Check the moon calendar and hourly forecasts.</p>
+          <a href="https://owltrek.com" style="display: inline-block; padding: 12px 28px; background: #6366f1; color: white; text-decoration: none; border-radius: 8px; font-size: 14px; font-weight: 600;">Visit OwlTrek.com</a>
+        </div>
+        
         <hr style="border: none; border-top: 1px solid #374151; margin: 24px 0;">
         <p style="margin: 0; color: #6b7280; font-size: 12px;">
-          Sent by OwlTrek • Moon data via SunCalc<br>
+          Sent by <a href="https://owltrek.com" style="color: #6b7280;">OwlTrek</a> • Moon data via SunCalc<br>
           <a href="${unsubscribeUrl}" style="color: #6b7280;">Unsubscribe</a>
         </p>
       </div>
@@ -140,11 +199,22 @@ export const POST: APIRoute = async ({ request, locals }) => {
         name: subscriber.location_name,
       };
 
-      // Generate forecast for this subscriber's location
-      const dates = getNextDays(location.timezone, 14);
-      const analyses = dates.map(date => 
-        analyzeNight(date, location.lat, location.lon, location.timezone)
-      );
+      // Generate forecast for this subscriber's location (7 days to match weather accuracy)
+      const dates = getNextWeek(location.timezone);
+      
+      // Fetch weather data for accurate forecasting
+      let weatherData = new Map();
+      try {
+        weatherData = await getWeatherForecast(location.lat, location.lon);
+      } catch (e) {
+        console.error(`Weather fetch failed for ${subscriber.email}:`, e);
+      }
+      
+      const analyses = dates.map(date => {
+        const dateStr = date.toISOString().split('T')[0];
+        const weather = weatherData.get(dateStr);
+        return analyzeNight(date, location.lat, location.lon, location.timezone, weather);
+      });
       
       const goodNights = analyses
         .map((night, idx) => ({ ...night, idx }))
@@ -155,8 +225,20 @@ export const POST: APIRoute = async ({ request, locals }) => {
           moonPhase: getMoonPhaseName(night.moonPhase),
           illumination: night.illumination,
           reason: night.reason,
-          type: night.goodNightType
+          type: night.goodNightType,
+          weather: night.weather || 'Weather unavailable'
         }));
+
+      // Find next outdoor day for hero section
+      const nextOutdoorDay: NextOutdoorDay | null = goodNights.length > 0 ? {
+        displayDate: goodNights[0].displayDate,
+        daysFromNow: analyses.findIndex(a => a.isGoodNight),
+        reason: goodNights[0].reason || 'Good conditions for outdoor activities',
+        type: goodNights[0].type as 'hiking' | 'stargazing',
+        moonPhase: goodNights[0].moonPhase,
+        illumination: goodNights[0].illumination,
+        weather: goodNights[0].weather
+      } : null;
 
       const unsubscribeUrl = `https://owltrek.com/api/subscribers/unsubscribe?email=${encodeURIComponent(subscriber.email)}`;
 
@@ -171,7 +253,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
             from: 'OwlTrek <noreply@mail.owltrek.com>',
             to: [subscriber.email],
             subject: `🦉 OwlTrek: ${goodNights.length} good night${goodNights.length !== 1 ? 's' : ''} coming up`,
-            html: generateEmailHtml(goodNights, location, unsubscribeUrl),
+            html: generateEmailHtml(goodNights, nextOutdoorDay, location, unsubscribeUrl),
           }),
         });
 
