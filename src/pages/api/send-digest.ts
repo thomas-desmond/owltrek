@@ -132,12 +132,70 @@ export const OPTIONS: APIRoute = async () => {
   return new Response(null, { status: 204, headers: corsHeaders });
 };
 
-// GET handler for simple health check / debugging
-export const GET: APIRoute = async () => {
-  return new Response(
-    JSON.stringify({ status: 'ok', message: 'Use POST to send digest emails' }),
-    { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
-  );
+// GET handler for email preview (localhost only)
+export const GET: APIRoute = async ({ request }) => {
+  const url = new URL(request.url);
+  const isLocalhost = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+  
+  if (!isLocalhost) {
+    return new Response(
+      JSON.stringify({ status: 'ok', message: 'Use POST to send digest emails' }),
+      { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+    );
+  }
+
+  // Preview with sample location (San Diego)
+  const location: LocationConfig = {
+    lat: 32.7157,
+    lon: -117.1611,
+    timezone: 'America/Los_Angeles',
+    name: 'San Diego, CA'
+  };
+
+  const dates = getNextWeek(location.timezone);
+  
+  let weatherData = new Map();
+  try {
+    weatherData = await getWeatherForecast(location.lat, location.lon);
+  } catch (e) {
+    console.error('Weather fetch failed:', e);
+  }
+  
+  const analyses = dates.map(date => {
+    const dateStr = date.toISOString().split('T')[0];
+    const weather = weatherData.get(dateStr);
+    return analyzeNight(date, location.lat, location.lon, location.timezone, weather);
+  });
+  
+  const goodNights = analyses
+    .map((night, idx) => ({ ...night, idx }))
+    .filter(n => n.isGoodNight)
+    .map(night => ({
+      date: night.dateString,
+      displayDate: formatDateInTimezone(dates[night.idx], location.timezone),
+      moonPhase: getMoonPhaseName(night.moonPhase),
+      illumination: night.illumination,
+      reason: night.reason,
+      type: night.goodNightType,
+      weather: night.weather || 'Weather unavailable'
+    }));
+
+  const nextOutdoorDay: NextOutdoorDay | null = goodNights.length > 0 ? {
+    displayDate: goodNights[0].displayDate,
+    daysFromNow: analyses.findIndex(a => a.isGoodNight),
+    reason: goodNights[0].reason || 'Good conditions for outdoor activities',
+    type: goodNights[0].type as 'hiking' | 'stargazing',
+    moonPhase: goodNights[0].moonPhase,
+    illumination: goodNights[0].illumination,
+    weather: goodNights[0].weather
+  } : null;
+
+  const html = generateEmailHtml(goodNights, nextOutdoorDay, location, '#unsubscribe-preview');
+  
+  return new Response(html, {
+    status: 200,
+    headers: { 'Content-Type': 'text/html', ...corsHeaders }
+  });
 };
 
 export const POST: APIRoute = async ({ request, locals }) => {
@@ -152,9 +210,13 @@ export const POST: APIRoute = async ({ request, locals }) => {
   const isLocalhost = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
   const cronSecret = request.headers.get('X-Cron-Secret');
   
+  // Test mode: ?test=email@example.com sends only to that email, ignoring frequency
+  const testEmail = url.searchParams.get('test');
+  const isTestMode = isLocalhost && testEmail;
+  
   if (!isLocalhost && cronSecret !== CRON_SECRET) {
     return new Response(
-      JSON.stringify({ success: false, error: 'Unauthorized' }),
+      JSON.stringify({ success: false, error: 'Unauthorized' }),  
       { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
     );
   }
@@ -180,8 +242,13 @@ export const POST: APIRoute = async ({ request, locals }) => {
 
     // Send personalized email to each subscriber (respecting frequency)
     for (const subscriber of subscribers) {
-      // Check if we should skip based on frequency
-      if (subscriber.last_email_sent) {
+      // In test mode, only send to the test email
+      if (isTestMode && subscriber.email !== testEmail) {
+        continue;
+      }
+      
+      // Skip frequency check in test mode
+      if (!isTestMode && subscriber.last_email_sent) {
         const lastSent = new Date(subscriber.last_email_sent);
         const hoursSinceLastEmail = (now.getTime() - lastSent.getTime()) / (1000 * 60 * 60);
         
@@ -206,8 +273,12 @@ export const POST: APIRoute = async ({ request, locals }) => {
       let weatherData = new Map();
       try {
         weatherData = await getWeatherForecast(location.lat, location.lon);
+        console.log('Weather fetch succeeded:', weatherData.size, 'days');
       } catch (e) {
         console.error(`Weather fetch failed for ${subscriber.email}:`, e);
+        if (e instanceof Error) {
+          console.error('Error message:', e.message);
+        }
       }
       
       const analyses = dates.map(date => {
